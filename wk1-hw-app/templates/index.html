@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}All tickets — WK1 Ticketing{% endblock %}
+{% block content %}
+<h1>Support tickets</h1>
+
+<table>
+  <tr>
+    <th>#</th><th>Title</th><th>Status</th><th>Messages</th><th>Created by</th><th>Created at</th>
+  </tr>
+  {% for t in tickets %}
+    <tr>
+      <td>{{ t.ticket_id }}</td>
+      <td><a href="{{ url_for('ticket_detail', ticket_id=t.ticket_id) }}">{{ t.title }}</a></td>
+      <td><span class="badge {{ t.status }}">{{ t.status }}</span></td>
+      <td>{{ t.message_count }}</td>
+      <td>{{ t.created_by }}</td>
+      <td class="muted">{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">No tickets yet.</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Create a new ticket</h2>
+<form method="post" action="{{ url_for('create_ticket') }}">
+  <input name="title" placeholder="Ticket title" required>
+  <button type="submit">Create ticket</button>
+</form>
+{% endblock %}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}WK1 Ticketing{% endblock %}</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; color: #222; }
+    h1 { font-size: 1.4rem; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
+    .badge { padding: 0.1rem 0.5rem; border-radius: 0.75rem; font-size: 0.85rem; }
+    .open { background: #fff3cd; }
+    .in_progress { background: #d1ecf1; }
+    .resolved { background: #d4edda; }
+    .muted { color: #777; font-size: 0.85rem; }
+    form { margin: 1rem 0; }
+    input, select, textarea, button { padding: 0.4rem; font-size: 1rem; }
+    textarea { width: 100%; }
+    .message { border-left: 3px solid #ccc; padding: 0.25rem 0.75rem; margin: 0.75rem 0; }
+  </style>
+</head>
+<body>
+<header>
+  <a href="{{ url_for('index') }}">WK1 Ticketing</a>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

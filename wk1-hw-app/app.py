@@ -1,69 +1,101 @@
-"""Week 1 homework: minimal ticketing app.
+"""Week 1 homework: Lakebase-backed ticketing app.
 
-A tiny Flask app to start from — list tickets and create new ones.
-In-memory storage for now; swap in Lakebase later if the homework needs it.
+Features (all read/write Lakebase, no in-memory data):
+  - View all support tickets            GET  /
+  - View a ticket and its messages      GET  /tickets/<id>
+  - Create a new ticket                 POST /tickets
+  - Add a message to a ticket           POST /tickets/<id>/messages
+  - Update a ticket's status            POST /tickets/<id>/status
+  - Health check (deploy probe)         GET  /health
+
+The identity of the logged-in user comes from the X-Forwarded-Email header,
+which the Databricks Apps runtime sets for authenticated visitors.
 """
 
 import os
-import uuid
 
-from flask import Flask, redirect, render_template_string, request, url_for
+from flask import Flask, abort, redirect, render_template, request, url_for
+
+import db
 
 app = Flask(__name__)
 
-# Simple in-memory store, seeded with a couple of example tickets.
-TICKETS = [
-    {"id": str(uuid.uuid4())[:8], "title": "Login page 500 error", "status": "open"},
-    {"id": str(uuid.uuid4())[:8], "title": "Add dark mode toggle", "status": "closed"},
-]
+STATUSES = ("open", "in_progress", "resolved")
 
-PAGE = """
-<!doctype html>
-<html>
-<head><title>WK1 Ticketing</title>
-<style>
-  body { font-family: sans-serif; max-width: 640px; margin: 2rem auto; }
-  h1 { font-size: 1.4rem; }
-  li { margin: 0.4rem 0; }
-  .status { color: #666; font-size: 0.9rem; }
-  form { margin-top: 1.5rem; }
-  input, select, button { padding: 0.4rem; font-size: 1rem; }
-</style>
-</head>
-<body>
-<h1>WK1 Ticketing</h1>
-<ul>
-  {% for t in tickets %}
-    <li><strong>{{ t.title }}</strong> <span class="status">[{{ t.status }}] {{ t.id }}</span></li>
-  {% else %}
-    <li>No tickets yet.</li>
-  {% endfor %}
-</ul>
-<form method="post" action="{{ url_for('create_ticket') }}">
-  <input name="title" placeholder="Ticket title" required>
-  <select name="status">
-    <option value="open">open</option>
-    <option value="closed">closed</option>
-  </select>
-  <button type="submit">Create ticket</button>
-</form>
-</body>
-</html>
-"""
+
+def current_user() -> str:
+    """Best-effort identity of the visitor (set by the Apps runtime)."""
+    return request.headers.get("X-Forwarded-Email") or "anonymous"
 
 
 @app.route("/")
 def index():
-    return render_template_string(PAGE, tickets=TICKETS)
+    tickets = db.run_query(
+        f"""
+        SELECT t.ticket_id, t.title, t.status, t.created_by, t.created_at,
+               count(m.message_id) AS message_count
+        FROM {db.SCHEMA}.tickets t
+        LEFT JOIN {db.SCHEMA}.ticket_messages m ON m.ticket_id = t.ticket_id
+        GROUP BY t.ticket_id
+        ORDER BY t.created_at DESC
+        """
+    )
+    return render_template("index.html", tickets=tickets, statuses=STATUSES)
+
+
+@app.route("/tickets/<int:ticket_id>")
+def ticket_detail(ticket_id: int):
+    rows = db.run_query(
+        f"SELECT ticket_id, title, status, created_by, created_at "
+        f"FROM {db.SCHEMA}.tickets WHERE ticket_id = %s",
+        (ticket_id,),
+    )
+    if not rows:
+        abort(404)
+    ticket = rows[0]
+    messages = db.run_query(
+        f"SELECT message_id, message_text, author, created_at "
+        f"FROM {db.SCHEMA}.ticket_messages WHERE ticket_id = %s "
+        f"ORDER BY created_at",
+        (ticket_id,),
+    )
+    return render_template(
+        "ticket.html", ticket=ticket, messages=messages, statuses=STATUSES
+    )
 
 
 @app.route("/tickets", methods=["POST"])
 def create_ticket():
     title = request.form.get("title", "").strip()
-    status = request.form.get("status", "open")
     if title:
-        TICKETS.append({"id": str(uuid.uuid4())[:8], "title": title, "status": status})
+        db.run_write(
+            f"INSERT INTO {db.SCHEMA}.tickets (title, created_by) VALUES (%s, %s)",
+            (title, current_user()),
+        )
     return redirect(url_for("index"))
+
+
+@app.route("/tickets/<int:ticket_id>/messages", methods=["POST"])
+def add_message(ticket_id: int):
+    text = request.form.get("message_text", "").strip()
+    if text:
+        db.run_write(
+            f"INSERT INTO {db.SCHEMA}.ticket_messages (ticket_id, message_text, author) "
+            "VALUES (%s, %s, %s)",
+            (ticket_id, text, current_user()),
+        )
+    return redirect(url_for("ticket_detail", ticket_id=ticket_id))
+
+
+@app.route("/tickets/<int:ticket_id>/status", methods=["POST"])
+def update_status(ticket_id: int):
+    status = request.form.get("status", "")
+    if status in STATUSES:
+        db.run_write(
+            f"UPDATE {db.SCHEMA}.tickets SET status = %s WHERE ticket_id = %s",
+            (status, ticket_id),
+        )
+    return redirect(url_for("ticket_detail", ticket_id=ticket_id))
 
 
 @app.route("/health")
@@ -72,6 +104,10 @@ def health():
 
 
 if __name__ == "__main__":
+    # Create schema/tables and seed sample data before serving traffic.
+    # Idempotent: safe on every restart, no-ops when data already exists.
+    db.ensure_schema()
+
     # Databricks Apps routes traffic to the port in DATABRICKS_APP_PORT (default 8000).
     port = int(os.environ.get("DATABRICKS_APP_PORT", 8000))
     app.run(host="0.0.0.0", port=port)

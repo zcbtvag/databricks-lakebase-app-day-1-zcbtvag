@@ -1,3 +1,7 @@
 command:
   - "python"
   - "app.py"
+
+env:
+  - name: LAKEBASE_ENDPOINT
+    valueFrom: postgres

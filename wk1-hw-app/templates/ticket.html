@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ ticket.title }} — WK1 Ticketing{% endblock %}
+{% block content %}
+<h1>{{ ticket.title }}</h1>
+<p>
+  <span class="badge {{ ticket.status }}">{{ ticket.status }}</span>
+  <span class="muted">created by {{ ticket.created_by }} on
+    {{ ticket.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+</p>
+
+<h2>Change status</h2>
+<form method="post" action="{{ url_for('update_status', ticket_id=ticket.ticket_id) }}">
+  <select name="status">
+    {% for s in statuses %}
+      <option value="{{ s }}" {% if s == ticket.status %}selected{% endif %}>{{ s }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Update status</button>
+</form>
+
+<h2>Messages ({{ messages | length }})</h2>
+{% for m in messages %}
+  <div class="message">
+    <strong>{{ m.author }}</strong>
+    <span class="muted">{{ m.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+    <p>{{ m.message_text }}</p>
+  </div>
+{% else %}
+  <p>No messages yet.</p>
+{% endfor %}
+
+<h2>Add a message</h2>
+<form method="post" action="{{ url_for('add_message', ticket_id=ticket.ticket_id) }}">
+  <textarea name="message_text" rows="3" placeholder="Write a message..." required></textarea>
+  <button type="submit">Add message</button>
+</form>
+
+<p><a href="{{ url_for('index') }}">← Back to all tickets</a></p>
+{% endblock %}
